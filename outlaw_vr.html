@@ -1,0 +1,2547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Outlaw VR - 2600 Western Showdown</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <!-- Three.js (r128) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- PeerJS for P2P Data & Audio Chat -->
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0c0806;
+      font-family: 'Courier New', Courier, monospace;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+    }
+    #canvas-container canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .retro-border {
+      border: 3px solid #d97706;
+      box-shadow: 0 0 15px rgba(217, 119, 6, 0.4), inset 0 0 10px rgba(217, 119, 6, 0.2);
+    }
+    .retro-text-shadow {
+      text-shadow: 2px 2px 0px #000, 0 0 10px #f59e0b;
+    }
+    .wood-pattern {
+      background: linear-gradient(135deg, #2b1810 0%, #1a0e0a 50%, #2b1810 100%);
+    }
+    /* Crosshair */
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 16px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    #crosshair::before, #crosshair::after {
+      content: '';
+      position: absolute;
+      background: rgba(251, 191, 36, 0.85);
+    }
+    #crosshair::before {
+      top: 7px;
+      left: 0;
+      width: 16px;
+      height: 2px;
+    }
+    #crosshair::after {
+      top: 0;
+      left: 7px;
+      width: 2px;
+      height: 16px;
+    }
+    .pulse-glow {
+      animation: pulse-glow 2s infinite;
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.5); }
+      50% { box-shadow: 0 0 30px rgba(245, 158, 11, 0.9); }
+    }
+  </style>
+</head>
+<body class="bg-stone-950 text-amber-100">
+
+  <!-- 3D WebGL Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- In-game Desktop Crosshair -->
+  <div id="crosshair" style="display: none;"></div>
+
+  <!-- IN-GAME HUD -->
+  <div id="hud-overlay" style="display: none;" class="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-4 md:p-6">
+    <!-- Top Bar: Scores & Match Status -->
+    <div class="flex items-center justify-between w-full max-w-4xl mx-auto">
+      <!-- Player 1 (West / Left) -->
+      <div id="p1-card" class="bg-black/75 retro-border rounded-lg px-4 py-2 flex items-center space-x-3 text-left">
+        <div class="w-3 h-3 rounded-full bg-cyan-400 animate-pulse"></div>
+        <div>
+          <div id="p1-name" class="text-xs text-cyan-300 font-bold uppercase tracking-wider">WEST: HOST</div>
+          <div class="text-2xl md:text-3xl font-black text-cyan-400 retro-text-shadow"><span id="p1-score">0</span></div>
+        </div>
+      </div>
+
+      <!-- Center Match Banner & Restart Option -->
+      <div class="bg-black/85 retro-border rounded-lg px-5 py-2 text-center pointer-events-auto">
+        <div class="text-[10px] tracking-widest text-amber-500 uppercase font-bold">ATARI 2600 OUTLAW</div>
+        <div id="round-status" class="text-lg md:text-xl font-extrabold text-amber-400">DUEL IN PROGRESS</div>
+        <div class="flex items-center justify-center space-x-3 mt-1">
+          <span class="text-[11px] text-stone-400">FIRST TO <span id="max-score-display">10</span> WINS</span>
+          <button id="btn-hud-restart" class="text-[10px] font-bold px-2.5 py-0.5 bg-amber-600 hover:bg-amber-500 text-stone-950 rounded transition cursor-pointer">
+            RESTART MATCH
+          </button>
+        </div>
+      </div>
+
+      <!-- Player 2 (East / Right) -->
+      <div id="p2-card" class="bg-black/75 retro-border rounded-lg px-4 py-2 flex items-center space-x-3 text-right">
+        <div>
+          <div id="p2-name" class="text-xs text-rose-300 font-bold uppercase tracking-wider">EAST: GUEST</div>
+          <div class="text-2xl md:text-3xl font-black text-rose-400 retro-text-shadow"><span id="p2-score">0</span></div>
+        </div>
+        <div class="w-3 h-3 rounded-full bg-rose-400 animate-pulse"></div>
+      </div>
+    </div>
+
+    <!-- Center Alerts / Notifications -->
+    <div id="center-toast" class="self-center bg-black/90 retro-border rounded-xl px-8 py-4 text-center transform transition-all duration-300 opacity-0 scale-90">
+      <div id="toast-title" class="text-2xl md:text-4xl font-black text-amber-400 retro-text-shadow tracking-wider">DRAW!</div>
+      <div id="toast-sub" class="text-sm md:text-base text-amber-200 mt-1">Shoot the outlaw! Blast obstacles to clear your line!</div>
+    </div>
+
+    <!-- Bottom Controls & Ammo / Mic Bar -->
+    <div class="flex items-end justify-between w-full max-w-5xl mx-auto">
+      <!-- Voice Chat & Audio Status -->
+      <div class="pointer-events-auto flex items-center space-x-3 bg-stone-900/90 retro-border rounded-lg p-2.5">
+        <button id="btn-toggle-mic" class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 active:bg-amber-800 text-xs font-bold text-white rounded flex items-center space-x-2 transition cursor-pointer">
+          <svg class="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"/>
+          </svg>
+          <span id="mic-status-text">MIC: ON</span>
+        </button>
+        <div class="flex items-center space-x-2 text-xs text-stone-300">
+          <div class="flex space-x-0.5 items-end h-4 w-12 bg-black/50 p-0.5 rounded">
+            <div id="audio-bar-1" class="w-2 bg-green-500 h-1 rounded-sm"></div>
+            <div id="audio-bar-2" class="w-2 bg-green-500 h-1 rounded-sm"></div>
+            <div id="audio-bar-3" class="w-2 bg-green-500 h-1 rounded-sm"></div>
+            <div id="audio-bar-4" class="w-2 bg-yellow-500 h-1 rounded-sm"></div>
+          </div>
+          <span id="peer-voice-status" class="text-[11px] text-stone-400">P2P Audio Connected</span>
+        </div>
+      </div>
+
+      <!-- Controls Hint -->
+      <div class="hidden md:block bg-stone-900/85 px-4 py-2 rounded-lg text-center text-[11px] text-stone-300 border border-stone-700">
+        <span class="text-cyan-300 font-bold">YOUR SIDE: <span id="hint-my-side">WEST CANYON</span></span> |
+        <span class="text-amber-400 font-bold">DESKTOP:</span> WASD Move | Mouse Aim | Click Shoot<br>
+        <span class="text-cyan-400 font-bold">QUEST VR:</span> Left Stick Move | Right Stick Turn | Right Trigger Shoot | Point Laser to Restart
+      </div>
+
+      <!-- Gun Status / Unlimited Ammo Counter -->
+      <div class="bg-black/85 retro-border rounded-xl px-5 py-3 text-right">
+        <div class="text-[10px] uppercase font-bold tracking-widest text-amber-500">COLT 6-SHOOTER</div>
+        <div class="flex items-center space-x-2 mt-1 justify-end">
+          <div class="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-700">UNLIMITED AMMO</div>
+          <div id="fire-cooldown-badge" class="text-xs font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700">READY</div>
+        </div>
+        <div id="fire-rate-info" class="text-[11px] text-stone-400 mt-1">RATE: <span id="rate-display-text" class="text-amber-300 font-bold">3 bullets / 1.0s</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- START / LOBBY SCREEN MODAL -->
+  <div id="lobby-screen" style="display: flex;" class="absolute inset-0 z-30 items-center justify-center p-4 bg-stone-950/85 backdrop-blur-sm overflow-y-auto">
+    <div class="wood-pattern retro-border rounded-2xl p-5 md:p-7 max-w-xl w-full text-center relative shadow-2xl my-auto">
+      <!-- Title -->
+      <h1 class="text-3xl md:text-4xl font-black text-amber-500 tracking-wider retro-text-shadow">
+        OUTLAW VR
+      </h1>
+      <p class="text-xs text-stone-300 mt-1 max-w-md mx-auto">
+        First-person remake of Atari 2600 Outlaw! Duel across the canyon, shoot moving prairie wagons, and score 10 points to win!
+      </p>
+
+      <!-- STEP 1: Select Platform (Choose Quest VR vs Desktop BEFORE Host, Join, or Solo) -->
+      <div class="mt-4 p-3 bg-stone-900/90 rounded-xl border border-amber-600/70 text-left">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-amber-300 uppercase tracking-wider">1. Select Platform</span>
+          <span id="platform-status-badge" class="text-[10px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700">DESKTOP MODE</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <button id="btn-select-desktop" class="py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border-2 border-amber-500 bg-amber-900/80 text-white shadow-md cursor-pointer">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM2 14a1 1 0 011-1h14a1 1 0 110 2H3a1 1 0 01-1-1z"/></svg>
+            <span>🖥️ Desktop Browser</span>
+          </button>
+          <button id="btn-select-vr" class="py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border border-stone-700 bg-stone-950 text-stone-300 hover:text-white cursor-pointer">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v1.5a4.5 4.5 0 0 0 4.5 4.5h.38a3.5 3.5 0 0 0 3.37-2.5h1.5a3.5 3.5 0 0 0 3.37 2.5h.38a4.5 4.5 0 0 0 4.5-4.5zM7 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm10 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+            <span>🥽 Oculus Quest VR</span>
+          </button>
+        </div>
+        <div id="platform-desc" class="text-[10px] text-amber-200/80 mt-1.5 text-center">
+          Desktop Browser selected: Plays directly in browser with Mouse Aim and WASD Movement.
+        </div>
+      </div>
+
+      <!-- STEP 2: Configure Shooting Cadence -->
+      <div class="mt-3 p-2.5 bg-stone-900/90 rounded-xl border border-amber-800 text-left">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-bold text-amber-300 uppercase tracking-wider">2. Fire Rate Limit (Unlimited Ammo)</span>
+          <span class="text-[10px] font-bold text-emerald-400">UNLIMITED</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-[10px] text-amber-200 font-bold mb-0.5">Bullets per Burst</label>
+            <input id="input-fire-bullets" type="number" min="1" max="15" value="3" class="w-full bg-stone-950 border border-amber-800 rounded px-2.5 py-1 text-amber-200 text-xs focus:outline-none focus:border-amber-400 font-mono">
+          </div>
+          <div>
+            <label class="block text-[10px] text-amber-200 font-bold mb-0.5">In Seconds Duration</label>
+            <input id="input-fire-seconds" type="number" min="0.2" max="10" step="0.1" value="1.0" class="w-full bg-stone-950 border border-amber-800 rounded px-2.5 py-1 text-amber-200 text-xs focus:outline-none focus:border-amber-400 font-mono">
+          </div>
+        </div>
+        <div class="text-[10px] text-stone-400 mt-1">Default: 3 bullets per 1.0s. You cannot fire faster than this cadence.</div>
+      </div>
+
+      <!-- STEP 3: Mode Selection (Host / Join / Solo) -->
+      <div class="mt-3">
+        <div class="text-[11px] font-bold text-amber-300 uppercase tracking-wider mb-1.5 text-left">
+          3. Choose Match Mode (Opposite Sides of Canyon)
+        </div>
+        <div class="flex rounded-lg bg-stone-900/80 p-1 border border-amber-800">
+          <button id="tab-host" class="flex-1 py-1.5 text-xs font-bold rounded-md bg-amber-600 text-stone-950 transition cursor-pointer">
+            Host Room (West)
+          </button>
+          <button id="tab-join" class="flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer">
+            Join Room (East)
+          </button>
+          <button id="tab-solo" class="flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer">
+            Solo Practice
+          </button>
+        </div>
+      </div>
+
+      <!-- Panel: Host Room -->
+      <div id="panel-host" class="mt-3 space-y-2.5 text-left">
+        <div>
+          <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-1">Room Name (Default: Xellossan)</label>
+          <input id="input-host-room" type="text" value="Xellossan" class="w-full bg-stone-950 border border-amber-700 rounded-lg px-3 py-1.5 text-amber-200 focus:outline-none focus:border-amber-400 font-mono text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-1">Your Gunslinger Name (West Showdown Post)</label>
+          <input id="input-host-name" type="text" value="Wyatt Earp" class="w-full bg-stone-950 border border-amber-700 rounded-lg px-3 py-1.5 text-amber-200 focus:outline-none focus:border-amber-400 font-mono text-sm">
+        </div>
+        <div class="flex items-center justify-between p-2 bg-stone-900/60 rounded-lg border border-stone-800">
+          <div>
+            <div class="text-xs font-bold text-amber-200">Direct Audio Chat (WebRTC)</div>
+            <div class="text-[10px] text-stone-400">Real-time peer microphone voice chat</div>
+          </div>
+          <input id="chk-host-audio" type="checkbox" checked class="w-4 h-4 accent-amber-500 cursor-pointer">
+        </div>
+
+        <button id="btn-create-room" class="w-full py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 active:scale-[0.98] text-stone-950 font-black text-sm uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer">
+          Create Room & Host Duel (West Side)
+        </button>
+      </div>
+
+      <!-- Panel: Join Room -->
+      <div id="panel-join" class="mt-3 space-y-2.5 text-left hidden">
+        <div>
+          <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-1">Enter Room Name to Join</label>
+          <input id="input-join-room" type="text" value="Xellossan" class="w-full bg-stone-950 border border-amber-700 rounded-lg px-3 py-1.5 text-amber-200 focus:outline-none focus:border-amber-400 font-mono text-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-amber-300 uppercase tracking-wider mb-1">Your Gunslinger Name (East Showdown Post)</label>
+          <input id="input-join-name" type="text" value="Doc Holliday" class="w-full bg-stone-950 border border-amber-700 rounded-lg px-3 py-1.5 text-amber-200 focus:outline-none focus:border-amber-400 font-mono text-sm">
+        </div>
+        <div class="flex items-center justify-between p-2 bg-stone-900/60 rounded-lg border border-stone-800">
+          <div>
+            <div class="text-xs font-bold text-amber-200">Direct Audio Chat (WebRTC)</div>
+            <div class="text-[10px] text-stone-400">Enable microphone for peer voice chat</div>
+          </div>
+          <input id="chk-join-audio" type="checkbox" checked class="w-4 h-4 accent-amber-500 cursor-pointer">
+        </div>
+
+        <button id="btn-join-room" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 active:scale-[0.98] text-stone-950 font-black text-sm uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer">
+          Join Outlaw Duel (East Side)
+        </button>
+      </div>
+
+      <!-- Panel: Solo Practice -->
+      <div id="panel-solo" class="mt-3 space-y-2.5 text-left hidden">
+        <p class="text-xs text-stone-300">
+          Play against a tactical AI computer outlaw! You spawn on the West side, the bot spawns opposite you on the East side, navigating and firing across the canyon.
+        </p>
+        <button id="btn-start-solo" class="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 active:scale-[0.98] text-stone-950 font-black text-sm uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer">
+          Start Solo Practice Match
+        </button>
+      </div>
+
+      <!-- Room Waiting / Connecting Status -->
+      <div id="room-status-box" class="mt-3 p-2.5 bg-stone-900 border border-amber-600/60 rounded-xl hidden">
+        <div class="flex items-center justify-center space-x-2">
+          <div class="w-3 h-3 rounded-full bg-amber-400 animate-ping"></div>
+          <div id="status-message" class="text-xs font-bold text-amber-300">Waiting for peer to join...</div>
+        </div>
+        <div id="room-code-display" class="text-[10px] text-stone-400 mt-1">Room: <span class="font-bold text-amber-200">Xellossan</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER / REMATCH MODAL -->
+  <div id="game-over-modal" style="display: none;" class="absolute inset-0 z-30 items-center justify-center p-4 bg-black/90">
+    <div class="wood-pattern retro-border rounded-2xl p-6 md:p-8 max-w-md w-full text-center">
+      <div id="winner-tag" class="text-xs font-bold uppercase tracking-widest text-amber-400">MATCH RESULTS</div>
+      <h2 id="winner-title" class="text-4xl font-black text-amber-400 retro-text-shadow mt-1">VICTORY!</h2>
+      <div id="final-score-display" class="text-2xl font-bold text-stone-200 mt-2">10 - 7</div>
+      <p id="winner-desc" class="text-xs text-stone-400 mt-2">The fastest gun in the territory has claimed the bounty!</p>
+      <div class="mt-6 flex space-x-3">
+        <button id="btn-rematch" class="flex-1 py-3 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold rounded-xl transition cursor-pointer">
+          Play Rematch
+        </button>
+        <button id="btn-return-lobby" class="flex-1 py-3 bg-stone-800 hover:bg-stone-700 text-amber-200 font-bold rounded-xl transition cursor-pointer">
+          Main Menu
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Element for Peer Voice Stream -->
+  <audio id="remote-audio" autoplay playsinline></audio>
+
+  <!-- MAIN GAME SCRIPT -->
+  <script>
+    /* ========================================================================
+       OUTLAW VR (ATARI 2600 REMAKE) - PEER-TO-PEER WEBXR & DESKTOP GAME
+       ======================================================================== */
+
+    // Sound FX Synthesizer using Web Audio API
+    class SoundSynth {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playGunshot() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const bufferSize = this.ctx.sampleRate * 0.18;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1400, now);
+        filter.frequency.exponentialRampToValueAtTime(150, now + 0.18);
+        filter.Q.setValueAtTime(3, now);
+
+        const gainNode = this.ctx.createGain();
+        gainNode.gain.setValueAtTime(1.0, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+
+        whiteNoise.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(this.ctx.destination);
+        whiteNoise.start(now);
+
+        const osc = this.ctx.createOscillator();
+        const oscGain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + 0.15);
+        oscGain.gain.setValueAtTime(0.8, now);
+        oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(oscGain);
+        oscGain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      }
+      playRicochet() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800 + Math.random() * 500, now);
+        osc.frequency.exponentialRampToValueAtTime(2600 + Math.random() * 600, now + 0.08);
+        osc.frequency.exponentialRampToValueAtTime(400, now + 0.25);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      }
+      playExplode() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const bufferSize = this.ctx.sampleRate * 0.25;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.08));
+        }
+        const source = this.ctx.createBufferSource();
+        source.buffer = buffer;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(600, now);
+        filter.frequency.linearRampToValueAtTime(100, now + 0.25);
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.7, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        source.start(now);
+      }
+      playHit() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(70, now + 0.35);
+        gain.gain.setValueAtTime(0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      }
+      playBell() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 1.2);
+      }
+      playWin() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [440, 554, 659, 880];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+          gain.gain.setValueAtTime(0.3, now + idx * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.12 + 0.4);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.12);
+          osc.stop(now + idx * 0.12 + 0.45);
+        });
+      }
+    }
+
+    const sound = new SoundSynth();
+
+    // Game Constants
+    const ARENA_WIDTH = 34;
+    const ARENA_DEPTH = 24;
+    const MAX_SCORE = 10;
+    const BULLET_SPEED = 38;
+    const OBSTACLE_COUNT = 9;
+
+    // Game State
+    const state = {
+      targetPlatform: 'desktop',
+      isHost: true,
+      isSolo: false,
+      inGame: false,
+      roomName: 'Xellossan',
+      myPlayerId: 1, // 1 for West (Left), 2 for East (Right)
+      myName: 'Wyatt Earp',
+      peerName: 'Opponent',
+      scoreP1: 0,
+      scoreP2: 0,
+      fireBullets: 3,
+      fireSeconds: 1.0,
+      minShotInterval: 333,
+      lastShotTime: 0,
+      micMuted: false,
+      localAudioStream: null,
+      peerCall: null,
+      peerConn: null,
+      peerInstance: null,
+      inVR: false,
+      respawnCountdown: 0
+    };
+
+    // Three.js Core Globals
+    let scene, camera, renderer;
+    let playerDolly;
+    let fpGunMesh = null;
+    let vrRightGunMesh = null;
+    let vrLaserBeam = null;
+    let rightTriggerWasPressed = false;
+    let muzzleFlashLight = null;
+    let remotePlayerMesh = null;
+    let bullets = [];
+    let obstacles = [];
+    let particleSystems = [];
+    let controllers = [];
+    let controllerGrips = [];
+    let clock = new THREE.Clock();
+
+    // 3D In-World Scoreboards (North & South Canyon Walls)
+    let northScoreboardMesh = null;
+    let southScoreboardMesh = null;
+    let scoreboardCanvas = null;
+    let scoreboardCtx = null;
+    let scoreboardTexture = null;
+    let vrRestartHover = false;
+
+    // Raycaster for VR and Desktop pointer clicks
+    const raycaster = new THREE.Raycaster();
+
+    // Keyboard & Mouse Desktop Controls
+    const keys = { w: false, a: false, s: false, d: false, space: false };
+    let isPointerLocked = false;
+    let pitch = 0;
+    let yaw = -Math.PI / 2;
+
+    // DOM Elements
+    const dom = {
+      canvasContainer: document.getElementById('canvas-container'),
+      crosshair: document.getElementById('crosshair'),
+      hudOverlay: document.getElementById('hud-overlay'),
+      lobbyScreen: document.getElementById('lobby-screen'),
+      gameOverModal: document.getElementById('game-over-modal'),
+      btnSelectVR: document.getElementById('btn-select-vr'),
+      btnSelectDesktop: document.getElementById('btn-select-desktop'),
+      platformStatusBadge: document.getElementById('platform-status-badge'),
+      platformDesc: document.getElementById('platform-desc'),
+      tabHost: document.getElementById('tab-host'),
+      tabJoin: document.getElementById('tab-join'),
+      tabSolo: document.getElementById('tab-solo'),
+      panelHost: document.getElementById('panel-host'),
+      panelJoin: document.getElementById('panel-join'),
+      panelSolo: document.getElementById('panel-solo'),
+      inputFireBullets: document.getElementById('input-fire-bullets'),
+      inputFireSeconds: document.getElementById('input-fire-seconds'),
+      inputHostRoom: document.getElementById('input-host-room'),
+      inputHostName: document.getElementById('input-host-name'),
+      chkHostAudio: document.getElementById('chk-host-audio'),
+      inputJoinRoom: document.getElementById('input-join-room'),
+      inputJoinName: document.getElementById('input-join-name'),
+      chkJoinAudio: document.getElementById('chk-join-audio'),
+      btnCreateRoom: document.getElementById('btn-create-room'),
+      btnJoinRoom: document.getElementById('btn-join-room'),
+      btnStartSolo: document.getElementById('btn-start-solo'),
+      btnHudRestart: document.getElementById('btn-hud-restart'),
+      roomStatusBox: document.getElementById('room-status-box'),
+      statusMessage: document.getElementById('status-message'),
+      roomCodeDisplay: document.getElementById('room-code-display'),
+      hintMySide: document.getElementById('hint-my-side'),
+      p1Score: document.getElementById('p1-score'),
+      p2Score: document.getElementById('p2-score'),
+      p1Name: document.getElementById('p1-name'),
+      p2Name: document.getElementById('p2-name'),
+      maxScoreDisplay: document.getElementById('max-score-display'),
+      roundStatus: document.getElementById('round-status'),
+      rateDisplayText: document.getElementById('rate-display-text'),
+      fireCooldownBadge: document.getElementById('fire-cooldown-badge'),
+      btnToggleMic: document.getElementById('btn-toggle-mic'),
+      micStatusText: document.getElementById('mic-status-text'),
+      peerVoiceStatus: document.getElementById('peer-voice-status'),
+      centerToast: document.getElementById('center-toast'),
+      toastTitle: document.getElementById('toast-title'),
+      toastSub: document.getElementById('toast-sub'),
+      winnerTitle: document.getElementById('winner-title'),
+      finalScoreDisplay: document.getElementById('final-score-display'),
+      winnerDesc: document.getElementById('winner-desc'),
+      btnRematch: document.getElementById('btn-rematch'),
+      btnReturnLobby: document.getElementById('btn-return-lobby'),
+      remoteAudio: document.getElementById('remote-audio'),
+      audioBars: [
+        document.getElementById('audio-bar-1'),
+        document.getElementById('audio-bar-2'),
+        document.getElementById('audio-bar-3'),
+        document.getElementById('audio-bar-4')
+      ]
+    };
+
+    /* ========================================================================
+       OPPOSITE SIDES POSITIONING: PLAYER 1 = WEST, PLAYER 2 = EAST
+       ======================================================================== */
+    function applyPlayerSide(playerId) {
+      state.myPlayerId = playerId;
+
+      if (playerId === 1) {
+        // Player 1 is WEST side (-13, 1.6, 0), facing East (+X)
+        playerDolly.position.set(-13, 1.6, 0);
+        yaw = -Math.PI / 2;
+        playerDolly.rotation.y = yaw;
+        camera.rotation.set(0, 0, 0);
+
+        // Remote opponent is EAST side (+13, 0, 0), facing West (-X)
+        if (remotePlayerMesh) {
+          remotePlayerMesh.position.set(13, 0, 0);
+          remotePlayerMesh.rotation.y = -Math.PI / 2;
+          if (remotePlayerMesh.userData.torsoMesh) {
+            remotePlayerMesh.userData.torsoMesh.material.color.setHex(0xb91c1c); // Red coat for East opponent
+          }
+        }
+        if (dom.hintMySide) dom.hintMySide.textContent = 'WEST CANYON (BLUE)';
+      } else {
+        // Player 2 is EAST side (+13, 1.6, 0), facing West (-X)
+        playerDolly.position.set(13, 1.6, 0);
+        yaw = Math.PI / 2;
+        playerDolly.rotation.y = yaw;
+        camera.rotation.set(0, 0, 0);
+
+        // Remote opponent is WEST side (-13, 0, 0), facing East (+X)
+        if (remotePlayerMesh) {
+          remotePlayerMesh.position.set(-13, 0, 0);
+          remotePlayerMesh.rotation.y = Math.PI / 2;
+          if (remotePlayerMesh.userData.torsoMesh) {
+            remotePlayerMesh.userData.torsoMesh.material.color.setHex(0x0284c7); // Blue coat for West opponent
+          }
+        }
+        if (dom.hintMySide) dom.hintMySide.textContent = 'EAST CANYON (RED)';
+      }
+
+      // Immediately transmit initial position so peer renders us on the correct side
+      if (state.peerConn && state.peerConn.open) {
+        state.peerConn.send({
+          type: 'state',
+          x: playerDolly.position.x,
+          y: playerDolly.position.y,
+          z: playerDolly.position.z,
+          yaw: playerDolly.rotation.y
+        });
+      }
+    }
+
+    /* ========================================================================
+       THREE.JS WORLD SETUP & PROCEDURAL ASSETS
+       ======================================================================== */
+    function initThree() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xd97736);
+      scene.fog = new THREE.FogExp2(0xbc6c25, 0.018);
+
+      const width = window.innerWidth || document.documentElement.clientWidth || 800;
+      const height = window.innerHeight || document.documentElement.clientHeight || 600;
+
+      camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 150);
+
+      playerDolly = new THREE.Group();
+      playerDolly.position.set(-13, 1.6, 0);
+      yaw = -Math.PI / 2;
+      playerDolly.rotation.y = yaw;
+      playerDolly.add(camera);
+      scene.add(playerDolly);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(width, height);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.xr.enabled = true;
+
+      renderer.domElement.style.display = 'block';
+      renderer.domElement.style.position = 'absolute';
+      renderer.domElement.style.top = '0';
+      renderer.domElement.style.left = '0';
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      dom.canvasContainer.appendChild(renderer.domElement);
+
+      setupLighting();
+      buildDesertEnvironment();
+      buildSideWallScoreboards();
+      buildObstacles();
+      buildRemotePlayerModel();
+      buildFirstPersonGun();
+      setupVRControllers();
+
+      window.addEventListener('resize', onWindowResize);
+      setupDesktopControls();
+
+      if ('xr' in navigator) {
+        navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+          if (supported) setPlatformMode('vr');
+        }).catch(() => {});
+      }
+
+      applyPlayerSide(1); // Default West position
+
+      renderer.setAnimationLoop(renderLoop);
+      onWindowResize();
+    }
+
+    function setupLighting() {
+      const ambient = new THREE.AmbientLight(0xffecd2, 0.7);
+      scene.add(ambient);
+
+      const sun = new THREE.DirectionalLight(0xffaa55, 1.5);
+      sun.position.set(0, 28, -25);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 1024;
+      sun.shadow.mapSize.height = 1024;
+      sun.shadow.camera.near = 0.5;
+      sun.shadow.camera.far = 70;
+      sun.shadow.camera.left = -25;
+      sun.shadow.camera.right = 25;
+      sun.shadow.camera.top = 20;
+      sun.shadow.camera.bottom = -20;
+      scene.add(sun);
+
+      muzzleFlashLight = new THREE.PointLight(0xffcc33, 0, 8);
+      scene.add(muzzleFlashLight);
+    }
+
+    function createSandTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#b07038';
+      ctx.fillRect(0, 0, 512, 512);
+
+      for (let i = 0; i < 4000; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const col = Math.random() > 0.5 ? 'rgba(215, 145, 80, 0.25)' : 'rgba(120, 70, 30, 0.2)';
+        ctx.fillStyle = col;
+        ctx.fillRect(x, y, 2 + Math.random() * 3, 2 + Math.random() * 3);
+      }
+      ctx.strokeStyle = 'rgba(110, 60, 25, 0.4)';
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.moveTo(0, 160);
+      ctx.lineTo(512, 160);
+      ctx.moveTo(0, 340);
+      ctx.lineTo(512, 340);
+      ctx.stroke();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(8, 6);
+      return texture;
+    }
+
+    function buildDesertEnvironment() {
+      const groundGeo = new THREE.PlaneGeometry(ARENA_WIDTH + 14, ARENA_DEPTH + 14);
+      const groundMat = new THREE.MeshLambertMaterial({
+        map: createSandTexture(),
+        roughness: 0.9
+      });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      const wallGeo = new THREE.BoxGeometry(ARENA_WIDTH + 16, 8, 4);
+      const wallMat = new THREE.MeshLambertMaterial({ color: 0x8c4424 });
+
+      const northWall = new THREE.Mesh(wallGeo, wallMat);
+      northWall.position.set(0, 3.5, ARENA_DEPTH / 2 + 2);
+      northWall.receiveShadow = true;
+      northWall.castShadow = true;
+      scene.add(northWall);
+
+      const southWall = new THREE.Mesh(wallGeo, wallMat);
+      southWall.position.set(0, 3.5, -ARENA_DEPTH / 2 - 2);
+      southWall.receiveShadow = true;
+      southWall.castShadow = true;
+      scene.add(southWall);
+
+      buildSaloonFacade(-ARENA_WIDTH / 2 - 1.5, 0, Math.PI / 2);
+      buildSaloonFacade(ARENA_WIDTH / 2 + 1.5, 0, -Math.PI / 2);
+
+      for (let i = -14; i <= 14; i += 7) {
+        createCactus(i, -ARENA_DEPTH / 2 + 1.2);
+        createCactus(i, ARENA_DEPTH / 2 - 1.2);
+      }
+
+      const centerRutGeo = new THREE.PlaneGeometry(0.3, ARENA_DEPTH);
+      const centerRutMat = new THREE.MeshBasicMaterial({ color: 0x5a2d12 });
+      const centerRut = new THREE.Mesh(centerRutGeo, centerRutMat);
+      centerRut.rotation.x = -Math.PI / 2;
+      centerRut.position.set(0, 0.02, 0);
+      scene.add(centerRut);
+    }
+
+    function buildSaloonFacade(x, z, rotY) {
+      const group = new THREE.Group();
+      group.position.set(x, 0, z);
+      group.rotation.y = rotY;
+
+      const wallGeo = new THREE.BoxGeometry(ARENA_DEPTH, 9, 1);
+      const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a2a18 });
+      const wall = new THREE.Mesh(wallGeo, wallMat);
+      wall.position.y = 4.5;
+      wall.castShadow = true;
+      wall.receiveShadow = true;
+      group.add(wall);
+
+      const roofGeo = new THREE.BoxGeometry(ARENA_DEPTH, 0.4, 3.5);
+      const roofMat = new THREE.MeshLambertMaterial({ color: 0x30190d });
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.set(0, 4.2, 1.7);
+      roof.castShadow = true;
+      group.add(roof);
+
+      for (let pz = -ARENA_DEPTH / 2 + 2; pz <= ARENA_DEPTH / 2 - 2; pz += 5) {
+        const postGeo = new THREE.CylinderGeometry(0.12, 0.12, 4.2, 6);
+        const post = new THREE.Mesh(postGeo, roofMat);
+        post.position.set(pz, 2.1, 3.2);
+        post.castShadow = true;
+        group.add(post);
+      }
+
+      const walkGeo = new THREE.BoxGeometry(ARENA_DEPTH, 0.3, 3.6);
+      const walkMat = new THREE.MeshLambertMaterial({ color: 0x5c3822 });
+      const walk = new THREE.Mesh(walkGeo, walkMat);
+      walk.position.set(0, 0.15, 1.8);
+      walk.receiveShadow = true;
+      group.add(walk);
+
+      scene.add(group);
+    }
+
+    function createCactus(x, z) {
+      const cactusGroup = new THREE.Group();
+      cactusGroup.position.set(x, 0, z);
+      const greenMat = new THREE.MeshLambertMaterial({ color: 0x2e5a27 });
+
+      const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 3, 7);
+      const trunk = new THREE.Mesh(trunkGeo, greenMat);
+      trunk.position.y = 1.5;
+      trunk.castShadow = true;
+      cactusGroup.add(trunk);
+
+      const armGeo1 = new THREE.CylinderGeometry(0.16, 0.16, 0.9, 6);
+      const arm1 = new THREE.Mesh(armGeo1, greenMat);
+      arm1.rotation.z = Math.PI / 2;
+      arm1.position.set(0.5, 1.6, 0);
+      cactusGroup.add(arm1);
+
+      const arm1Up = new THREE.CylinderGeometry(0.15, 0.15, 1.1, 6);
+      const arm1U = new THREE.Mesh(arm1Up, greenMat);
+      arm1U.position.set(0.9, 2.0, 0);
+      arm1U.castShadow = true;
+      cactusGroup.add(arm1U);
+
+      const armGeo2 = new THREE.CylinderGeometry(0.16, 0.16, 0.8, 6);
+      const arm2 = new THREE.Mesh(armGeo2, greenMat);
+      arm2.rotation.z = -Math.PI / 2;
+      arm2.position.set(-0.45, 1.2, 0);
+      cactusGroup.add(arm2);
+
+      const arm2Up = new THREE.CylinderGeometry(0.15, 0.15, 0.9, 6);
+      const arm2U = new THREE.Mesh(arm2Up, greenMat);
+      arm2U.position.set(-0.8, 1.55, 0);
+      arm2U.castShadow = true;
+      cactusGroup.add(arm2U);
+
+      scene.add(cactusGroup);
+    }
+
+    /* ========================================================================
+       LARGE 3D SCOREBOARDS ON NORTH & SOUTH CANYON WALLS (CLICKABLE WITH QUEST)
+       ======================================================================== */
+    function buildSideWallScoreboards() {
+      scoreboardCanvas = document.createElement('canvas');
+      scoreboardCanvas.width = 1024;
+      scoreboardCanvas.height = 512;
+      scoreboardCtx = scoreboardCanvas.getContext('2d');
+      scoreboardTexture = new THREE.CanvasTexture(scoreboardCanvas);
+
+      updateScoreboardCanvas();
+
+      const boardGeo = new THREE.BoxGeometry(7.2, 3.6, 0.25);
+      const boardMat = new THREE.MeshStandardMaterial({
+        map: scoreboardTexture,
+        roughness: 0.85
+      });
+
+      northScoreboardMesh = new THREE.Mesh(boardGeo, boardMat);
+      northScoreboardMesh.position.set(0, 4.6, ARENA_DEPTH / 2 - 0.2);
+      northScoreboardMesh.rotation.y = Math.PI;
+      northScoreboardMesh.castShadow = true;
+      northScoreboardMesh.receiveShadow = true;
+      northScoreboardMesh.userData = { isScoreboard: true, side: 'north' };
+      scene.add(northScoreboardMesh);
+
+      southScoreboardMesh = new THREE.Mesh(boardGeo, boardMat);
+      southScoreboardMesh.position.set(0, 4.6, -ARENA_DEPTH / 2 + 0.2);
+      southScoreboardMesh.rotation.y = 0;
+      southScoreboardMesh.castShadow = true;
+      southScoreboardMesh.receiveShadow = true;
+      southScoreboardMesh.userData = { isScoreboard: true, side: 'south' };
+      scene.add(southScoreboardMesh);
+    }
+
+    function updateScoreboardCanvas() {
+      if (!scoreboardCtx) return;
+      const ctx = scoreboardCtx;
+
+      ctx.fillStyle = '#1c0f07';
+      ctx.fillRect(0, 0, 1024, 512);
+
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 16;
+      ctx.strokeRect(16, 16, 992, 480);
+      ctx.strokeStyle = '#92400e';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(32, 32, 960, 448);
+
+      ctx.fillStyle = '#0f0804';
+      ctx.fillRect(40, 40, 944, 76);
+      ctx.font = 'black 36px monospace';
+      ctx.fillStyle = '#f59e0b';
+      ctx.textAlign = 'center';
+      ctx.fillText('★ ATARI 2600 OUTLAW SHOWDOWN ★', 512, 92);
+
+      // West Player Box
+      ctx.fillStyle = '#082f49';
+      ctx.fillRect(70, 135, 410, 240);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 7;
+      ctx.strokeRect(70, 135, 410, 240);
+
+      ctx.font = 'bold 32px monospace';
+      ctx.fillStyle = '#bae6fd';
+      ctx.fillText(`WEST: ${state.isHost ? state.myName.toUpperCase() : state.peerName.toUpperCase()}`, 275, 185);
+
+      ctx.font = 'black 170px monospace';
+      ctx.fillStyle = '#38bdf8';
+      ctx.shadowColor = '#0284c7';
+      ctx.shadowBlur = 15;
+      ctx.fillText(`${state.scoreP1}`, 275, 335);
+      ctx.shadowBlur = 0;
+
+      // East Player Box
+      ctx.fillStyle = '#4c0519';
+      ctx.fillRect(544, 135, 410, 240);
+      ctx.strokeStyle = '#fb7185';
+      ctx.lineWidth = 7;
+      ctx.strokeRect(544, 135, 410, 240);
+
+      ctx.font = 'bold 32px monospace';
+      ctx.fillStyle = '#fecdd3';
+      ctx.fillText(`EAST: ${!state.isHost ? state.myName.toUpperCase() : state.peerName.toUpperCase()}`, 749, 185);
+
+      ctx.font = 'black 170px monospace';
+      ctx.fillStyle = '#fb7185';
+      ctx.shadowColor = '#e11d48';
+      ctx.shadowBlur = 15;
+      ctx.fillText(`${state.scoreP2}`, 749, 335);
+      ctx.shadowBlur = 0;
+
+      // Clickable / Laser Target Restart Button
+      ctx.fillStyle = vrRestartHover ? '#22c55e' : '#d97706';
+      ctx.roundRect(260, 395, 504, 82, 14);
+      ctx.fill();
+      ctx.strokeStyle = '#fef3c7';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      ctx.font = 'black 38px monospace';
+      ctx.fillStyle = '#1c1917';
+      ctx.fillText(vrRestartHover ? '★ CLICK TRIGGER TO RESTART ★' : '⟳ CLICK / POINT TO RESTART', 512, 450);
+
+      scoreboardTexture.needsUpdate = true;
+    }
+
+    /* ========================================================================
+       PRAIRIE COVERED WAGONS & BARRIERS
+       ======================================================================== */
+    function buildObstacles() {
+      const types = ['wagon', 'crate', 'cactus', 'wagon', 'block', 'wagon', 'crate', 'cactus', 'wagon'];
+
+      for (let i = 0; i < OBSTACLE_COUNT; i++) {
+        const type = types[i % types.length];
+        const obs = createObstacleMesh(type);
+        const xPos = -4.5 + (i % 4) * 2.8 + (Math.random() * 0.4 - 0.2);
+        const zPos = -ARENA_DEPTH / 2 + (i / OBSTACLE_COUNT) * ARENA_DEPTH + Math.random() * 2;
+        const speed = (0.75 + Math.random() * 1.5) * (Math.random() > 0.5 ? 1 : -1);
+
+        obs.position.set(xPos, 0, zPos);
+        obs.userData = {
+          id: i,
+          type: type,
+          speed: speed,
+          health: type === 'wagon' ? 2 : 1,
+          baseY: type === 'block' ? 1.4 : 0,
+          bobPhase: Math.random() * Math.PI * 2,
+          radius: type === 'wagon' ? 1.8 : 0.85
+        };
+        scene.add(obs);
+        obstacles.push(obs);
+      }
+    }
+
+    function createAuthenticCoveredWagon() {
+      const wagon = new THREE.Group();
+
+      const woodMat = new THREE.MeshLambertMaterial({ color: 0x5c3317 });
+      const plankMat = new THREE.MeshLambertMaterial({ color: 0x7a431d });
+      const canvasMat = new THREE.MeshLambertMaterial({ color: 0xe8dfcf, roughness: 0.95 });
+      const ironMat = new THREE.MeshStandardMaterial({ color: 0x1f1f1f, roughness: 0.5, metalness: 0.85 });
+
+      const bedGeo = new THREE.BoxGeometry(1.6, 0.5, 3.4);
+      const bed = new THREE.Mesh(bedGeo, woodMat);
+      bed.position.y = 1.05;
+      bed.castShadow = true;
+      wagon.add(bed);
+
+      const leftBoardGeo = new THREE.BoxGeometry(0.1, 0.7, 3.4);
+      const leftBoard = new THREE.Mesh(leftBoardGeo, plankMat);
+      leftBoard.position.set(-0.85, 1.5, 0);
+      leftBoard.rotation.z = -0.15;
+      leftBoard.castShadow = true;
+
+      const rightBoardGeo = new THREE.BoxGeometry(0.1, 0.7, 3.4);
+      const rightBoard = new THREE.Mesh(rightBoardGeo, plankMat);
+      rightBoard.position.set(0.85, 1.5, 0);
+      rightBoard.rotation.z = 0.15;
+      rightBoard.castShadow = true;
+      wagon.add(leftBoard, rightBoard);
+
+      const tailGate = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 0.1), plankMat);
+      tailGate.position.set(0, 1.5, 1.7);
+      const frontDash = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 0.1), plankMat);
+      frontDash.position.set(0, 1.5, -1.7);
+      wagon.add(tailGate, frontDash);
+
+      const bonnetRadius = 1.05;
+      const bonnetLength = 3.6;
+      const bonnetGeo = new THREE.CylinderGeometry(bonnetRadius, bonnetRadius, bonnetLength, 14, 1, true, 0, Math.PI);
+      const bonnet = new THREE.Mesh(bonnetGeo, canvasMat);
+      bonnet.rotation.z = Math.PI / 2;
+      bonnet.rotation.x = Math.PI / 2;
+      bonnet.position.set(0, 2.05, 0);
+      bonnet.castShadow = true;
+      wagon.add(bonnet);
+
+      for (let hz = -1.6; hz <= 1.6; hz += 0.8) {
+        const hoopGeo = new THREE.TorusGeometry(bonnetRadius + 0.02, 0.035, 6, 14, Math.PI);
+        const hoop = new THREE.Mesh(hoopGeo, woodMat);
+        hoop.rotation.y = Math.PI / 2;
+        hoop.position.set(0, 2.05, hz);
+        wagon.add(hoop);
+      }
+
+      const seatGeo = new THREE.BoxGeometry(1.4, 0.12, 0.45);
+      const seat = new THREE.Mesh(seatGeo, woodMat);
+      seat.position.set(0, 1.5, -1.35);
+      const footRest = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.3), woodMat);
+      footRest.position.set(0, 1.15, -1.65);
+      wagon.add(seat, footRest);
+
+      const tongueGeo = new THREE.CylinderGeometry(0.06, 0.08, 2.2, 6);
+      const tongue = new THREE.Mesh(tongueGeo, woodMat);
+      tongue.rotation.x = Math.PI / 2;
+      tongue.position.set(0, 0.65, -2.6);
+      wagon.add(tongue);
+
+      const frontW1 = buildSpokedWheel(0.48, ironMat, woodMat);
+      frontW1.position.set(-1.0, 0.48, -1.1);
+      const frontW2 = buildSpokedWheel(0.48, ironMat, woodMat);
+      frontW2.position.set(1.0, 0.48, -1.1);
+      frontW2.rotation.y = Math.PI;
+
+      const rearW1 = buildSpokedWheel(0.68, ironMat, woodMat);
+      rearW1.position.set(-1.05, 0.68, 1.15);
+      const rearW2 = buildSpokedWheel(0.68, ironMat, woodMat);
+      rearW2.position.set(1.05, 0.68, 1.15);
+      rearW2.rotation.y = Math.PI;
+
+      wagon.add(frontW1, frontW2, rearW1, rearW2);
+      wagon.userData.wheels = [frontW1, frontW2, rearW1, rearW2];
+
+      return wagon;
+    }
+
+    function buildSpokedWheel(radius, ironMat, woodMat) {
+      const wheelGroup = new THREE.Group();
+
+      const rimGeo = new THREE.TorusGeometry(radius, 0.045, 8, 18);
+      const rim = new THREE.Mesh(rimGeo, ironMat);
+      wheelGroup.add(rim);
+
+      const fellyGeo = new THREE.TorusGeometry(radius - 0.04, 0.035, 6, 18);
+      const felly = new THREE.Mesh(fellyGeo, woodMat);
+      wheelGroup.add(felly);
+
+      const hubGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.18, 8);
+      const hub = new THREE.Mesh(hubGeo, woodMat);
+      hub.rotation.x = Math.PI / 2;
+      wheelGroup.add(hub);
+
+      for (let s = 0; s < 8; s++) {
+        const spokeGeo = new THREE.CylinderGeometry(0.02, 0.02, radius * 1.85, 5);
+        const spoke = new THREE.Mesh(spokeGeo, woodMat);
+        spoke.rotation.z = (s * Math.PI) / 4;
+        wheelGroup.add(spoke);
+      }
+
+      return wheelGroup;
+    }
+
+    function createObstacleMesh(type) {
+      if (type === 'wagon') {
+        return createAuthenticCoveredWagon();
+      } else if (type === 'crate') {
+        const group = new THREE.Group();
+        const geo = new THREE.BoxGeometry(1.3, 1.3, 1.3);
+        const mat = new THREE.MeshLambertMaterial({ color: 0x8f562b });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.y = 0.65;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        group.add(mesh);
+
+        const bandGeo = new THREE.BoxGeometry(1.32, 0.15, 1.32);
+        const bandMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+        const band1 = new THREE.Mesh(bandGeo, bandMat);
+        band1.position.y = 0.35;
+        const band2 = new THREE.Mesh(bandGeo, bandMat);
+        band2.position.y = 0.95;
+        group.add(band1, band2);
+        return group;
+      } else if (type === 'cactus') {
+        const group = new THREE.Group();
+        const mat = new THREE.MeshLambertMaterial({ color: 0x3b7530 });
+        const trunkGeo = new THREE.CylinderGeometry(0.35, 0.4, 2.8, 6);
+        const trunk = new THREE.Mesh(trunkGeo, mat);
+        trunk.position.y = 1.4;
+        trunk.castShadow = true;
+        group.add(trunk);
+
+        const armGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.2, 5);
+        const arm = new THREE.Mesh(armGeo, mat);
+        arm.rotation.z = Math.PI / 2;
+        arm.position.set(0.6, 1.6, 0);
+        group.add(arm);
+
+        const armUp = new THREE.CylinderGeometry(0.2, 0.2, 1.1, 5);
+        const armU = new THREE.Mesh(armUp, mat);
+        armU.position.set(1.1, 2.0, 0);
+        group.add(armU);
+        return group;
+      } else {
+        const group = new THREE.Group();
+        const geo = new THREE.DodecahedronGeometry(0.85);
+        const mat = new THREE.MeshLambertMaterial({ color: 0xd97706 });
+        const block = new THREE.Mesh(geo, mat);
+        block.position.y = 1.4;
+        block.castShadow = true;
+        group.add(block);
+        return group;
+      }
+    }
+
+    function resetObstacle(obs, forcedZ = null) {
+      obs.visible = true;
+      obs.userData.health = obs.userData.type === 'wagon' ? 2 : 1;
+      const dir = obs.userData.speed > 0 ? 1 : -1;
+      const zSpawn = forcedZ !== null ? forcedZ : (dir > 0 ? -ARENA_DEPTH / 2 - 2.5 : ARENA_DEPTH / 2 + 2.5);
+      obs.position.z = zSpawn;
+      obs.position.x = -4.5 + Math.random() * 9.0;
+    }
+
+    /* ========================================================================
+       PLAYER MODELS (FIRST PERSON WEAPON & REMOTE OUTLAW)
+       ======================================================================== */
+    function buildFirstPersonGun() {
+      const gunGroup = new THREE.Group();
+
+      const barrelGeo = new THREE.CylinderGeometry(0.024, 0.028, 0.45, 8);
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.35, metalness: 0.85 });
+      const barrel = new THREE.Mesh(barrelGeo, metalMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0, -0.22);
+      gunGroup.add(barrel);
+
+      const cylGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.14, 8);
+      const cyl = new THREE.Mesh(cylGeo, metalMat);
+      cyl.rotation.x = Math.PI / 2;
+      cyl.position.set(0, -0.01, -0.04);
+      gunGroup.add(cyl);
+
+      const frameGeo = new THREE.BoxGeometry(0.06, 0.08, 0.16);
+      const frame = new THREE.Mesh(frameGeo, metalMat);
+      frame.position.set(0, -0.01, 0.04);
+      gunGroup.add(frame);
+
+      const gripGeo = new THREE.BoxGeometry(0.05, 0.18, 0.08);
+      const woodMat = new THREE.MeshLambertMaterial({ color: 0x663311 });
+      const grip = new THREE.Mesh(gripGeo, woodMat);
+      grip.position.set(0, -0.11, 0.09);
+      grip.rotation.x = -0.3;
+      gunGroup.add(grip);
+
+      const sightGeo = new THREE.BoxGeometry(0.008, 0.02, 0.02);
+      const sight = new THREE.Mesh(sightGeo, metalMat);
+      sight.position.set(0, 0.03, -0.42);
+      gunGroup.add(sight);
+
+      gunGroup.position.set(0.24, -0.22, -0.5);
+      gunGroup.rotation.y = -0.05;
+      camera.add(gunGroup);
+      fpGunMesh = gunGroup;
+    }
+
+    function buildRemotePlayerModel() {
+      const outlaw = new THREE.Group();
+      const bodyMat = new THREE.MeshLambertMaterial({ color: 0xb91c1c });
+      const darkMat = new THREE.MeshLambertMaterial({ color: 0x1c1917 });
+      const skinMat = new THREE.MeshLambertMaterial({ color: 0xd4a373 });
+
+      const legGeo = new THREE.BoxGeometry(0.28, 0.9, 0.3);
+      const leftLeg = new THREE.Mesh(legGeo, darkMat);
+      leftLeg.position.set(-0.2, 0.45, 0);
+      const rightLeg = new THREE.Mesh(legGeo, darkMat);
+      rightLeg.position.set(0.2, 0.45, 0);
+      outlaw.add(leftLeg, rightLeg);
+
+      const torsoGeo = new THREE.BoxGeometry(0.7, 0.9, 0.45);
+      const torso = new THREE.Mesh(torsoGeo, bodyMat);
+      torso.position.set(0, 1.25, 0);
+      torso.castShadow = true;
+      outlaw.add(torso);
+      outlaw.userData.torsoMesh = torso;
+
+      const headGeo = new THREE.BoxGeometry(0.35, 0.35, 0.35);
+      const head = new THREE.Mesh(headGeo, skinMat);
+      head.position.set(0, 1.85, 0);
+      outlaw.add(head);
+
+      const bandanaGeo = new THREE.BoxGeometry(0.37, 0.15, 0.37);
+      const bandanaMat = new THREE.MeshLambertMaterial({ color: 0xd97706 });
+      const bandana = new THREE.Mesh(bandanaGeo, bandanaMat);
+      bandana.position.set(0, 1.76, 0);
+      outlaw.add(bandana);
+
+      const brimGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.05, 12);
+      const hatCrownGeo = new THREE.CylinderGeometry(0.3, 0.34, 0.35, 10);
+      const hatMat = new THREE.MeshLambertMaterial({ color: 0x3e2723 });
+
+      const brim = new THREE.Mesh(brimGeo, hatMat);
+      brim.position.set(0, 2.05, 0);
+      const crown = new THREE.Mesh(hatCrownGeo, hatMat);
+      crown.position.set(0, 2.22, 0);
+      outlaw.add(brim, crown);
+
+      const armGeo = new THREE.BoxGeometry(0.18, 0.18, 0.7);
+      const gunArm = new THREE.Mesh(armGeo, bodyMat);
+      gunArm.position.set(-0.4, 1.35, 0.3);
+      outlaw.add(gunArm);
+
+      const nameplate = createTextSprite(state.peerName || 'OUTLAW');
+      nameplate.position.set(0, 2.65, 0);
+      outlaw.add(nameplate);
+      outlaw.userData.nameplate = nameplate;
+
+      outlaw.position.set(13, 0, 0);
+      outlaw.rotation.y = -Math.PI / 2;
+      scene.add(outlaw);
+      remotePlayerMesh = outlaw;
+    }
+
+    function createTextSprite(message) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.roundRect(8, 8, 240, 48, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.font = 'bold 24px monospace';
+      ctx.fillStyle = '#fef3c7';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(message, 128, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(2.2, 0.55, 1);
+      return sprite;
+    }
+
+    /* ========================================================================
+       QUEST VR CONTROLLER TRACKING & SINGLE RIGHT-HAND GUN WITH CLICKABLE LASER
+       ======================================================================== */
+    function setupVRControllers() {
+      vrRightGunMesh = createVRControllerGun();
+
+      for (let i = 0; i < 2; i++) {
+        const controller = renderer.xr.getController(i);
+        controller.userData.index = i;
+        controller.addEventListener('selectstart', onVRSelectStart);
+        controller.addEventListener('connected', onControllerConnected);
+        controller.addEventListener('disconnected', onControllerDisconnected);
+        playerDolly.add(controller);
+        controllers.push(controller);
+
+        const grip = renderer.xr.getControllerGrip(i);
+        grip.userData.index = i;
+        playerDolly.add(grip);
+        controllerGrips.push(grip);
+      }
+    }
+
+    function onControllerConnected(event) {
+      const handedness = event.data.handedness;
+      this.userData.handedness = handedness;
+
+      const grip = controllerGrips[this.userData.index];
+      if (grip) {
+        grip.userData.handedness = handedness;
+        if (handedness === 'right' || (!vrRightGunMesh.parent && handedness !== 'left')) {
+          if (vrRightGunMesh.parent) {
+            vrRightGunMesh.parent.remove(vrRightGunMesh);
+          }
+          grip.add(vrRightGunMesh);
+          vrRightGunMesh.visible = true;
+        }
+      }
+    }
+
+    function onControllerDisconnected() {
+      const grip = controllerGrips[this.userData.index];
+      if (grip && vrRightGunMesh.parent === grip) {
+        grip.remove(vrRightGunMesh);
+      }
+    }
+
+    function createVRControllerGun() {
+      const group = new THREE.Group();
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3, metalness: 0.85 });
+      const woodMat = new THREE.MeshLambertMaterial({ color: 0x5a2d12 });
+
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.35, 8), metalMat);
+      barrel.rotation.x = -Math.PI / 2;
+      barrel.position.set(0, 0.03, -0.15);
+      group.add(barrel);
+
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.1, 8), metalMat);
+      cyl.rotation.x = -Math.PI / 2;
+      cyl.position.set(0, 0.03, -0.02);
+      group.add(cyl);
+
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.06), woodMat);
+      grip.position.set(0, -0.05, 0.04);
+      grip.rotation.x = 0.25;
+      group.add(grip);
+
+      const tip = new THREE.Object3D();
+      tip.position.set(0, 0.03, -0.35);
+      group.add(tip);
+      group.userData.tip = tip;
+
+      const rayGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0.03, -0.35),
+        new THREE.Vector3(0, 0.03, -25)
+      ]);
+      const rayMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.65 });
+      const ray = new THREE.Line(rayGeo, rayMat);
+      group.add(ray);
+      vrLaserBeam = ray;
+
+      return group;
+    }
+
+    function onVRSelectStart() {
+      sound.init();
+
+      if (checkVRScoreboardInteraction(true)) {
+        return;
+      }
+
+      if (!state.inGame && (state.scoreP1 >= MAX_SCORE || state.scoreP2 >= MAX_SCORE)) {
+        resetMatchScores();
+        if (state.peerConn && state.peerConn.open) {
+          state.peerConn.send({ type: 'rematch' });
+        }
+        return;
+      }
+
+      if (state.inGame) {
+        attemptShoot(true);
+      }
+    }
+
+    function checkVRScoreboardInteraction(isClick = false) {
+      if (!vrRightGunMesh || !vrRightGunMesh.parent || !state.inVR) return false;
+
+      const origin = new THREE.Vector3();
+      vrRightGunMesh.userData.tip.getWorldPosition(origin);
+
+      const localForward = new THREE.Vector3(0, 0, -1);
+      const worldQuat = new THREE.Quaternion();
+      vrRightGunMesh.getWorldQuaternion(worldQuat);
+      const direction = localForward.applyQuaternion(worldQuat).normalize();
+
+      raycaster.set(origin, direction);
+      const targets = [northScoreboardMesh, southScoreboardMesh].filter(Boolean);
+      const intersects = raycaster.intersectObjects(targets, false);
+
+      let pointingAtRestart = false;
+      if (intersects.length > 0) {
+        const hit = intersects[0];
+        if (hit.uv && hit.uv.x > 0.22 && hit.uv.x < 0.78 && hit.uv.y > 0.04 && hit.uv.y < 0.32) {
+          pointingAtRestart = true;
+        }
+      }
+
+      if (pointingAtRestart !== vrRestartHover) {
+        vrRestartHover = pointingAtRestart;
+        if (vrLaserBeam) {
+          vrLaserBeam.material.color.setHex(vrRestartHover ? 0x22c55e : 0xf59e0b);
+        }
+        updateScoreboardCanvas();
+      }
+
+      if (pointingAtRestart && isClick) {
+        sound.playBell();
+        resetMatchScores();
+        if (state.peerConn && state.peerConn.open) {
+          state.peerConn.send({ type: 'rematch' });
+        }
+        return true;
+      }
+
+      return false;
+    }
+
+    /* ========================================================================
+       PLATFORM / DISPLAY SELECTION & VR ACTIVATION
+       ======================================================================== */
+    function setPlatformMode(mode) {
+      state.targetPlatform = mode;
+      if (mode === 'vr') {
+        dom.btnSelectVR.className = 'py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border-2 border-purple-500 bg-purple-900/80 text-white shadow-md pulse-glow cursor-pointer';
+        dom.btnSelectDesktop.className = 'py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border border-stone-700 bg-stone-950 text-stone-300 hover:text-white cursor-pointer';
+        dom.platformStatusBadge.textContent = 'VR MODE SELECTED';
+        dom.platformStatusBadge.className = 'text-[10px] font-bold text-purple-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-700';
+        dom.platformDesc.textContent = 'Oculus Quest VR selected: Automatically enters WebXR headset mode when you start.';
+      } else {
+        dom.btnSelectDesktop.className = 'py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border-2 border-amber-500 bg-amber-900/80 text-white shadow-md cursor-pointer';
+        dom.btnSelectVR.className = 'py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 border border-stone-700 bg-stone-950 text-stone-300 hover:text-white cursor-pointer';
+        dom.platformStatusBadge.textContent = 'DESKTOP MODE';
+        dom.platformStatusBadge.className = 'text-[10px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700';
+        dom.platformDesc.textContent = 'Desktop Browser selected: Plays directly in browser with Mouse Aim and WASD Movement.';
+      }
+    }
+
+    function enterVRIfSelected(onReady) {
+      sound.init();
+      readFireRateInputs();
+
+      if (state.targetPlatform === 'vr' && navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+          if (supported) {
+            navigator.xr.requestSession('immersive-vr', {
+              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+            }).then(session => {
+              renderer.xr.setSession(session);
+              state.inVR = true;
+
+              if (fpGunMesh) fpGunMesh.visible = false;
+              dom.lobbyScreen.style.display = 'none';
+              dom.hudOverlay.style.display = 'flex';
+              dom.crosshair.style.display = 'none';
+
+              session.addEventListener('end', () => {
+                state.inVR = false;
+                if (fpGunMesh) fpGunMesh.visible = true;
+              });
+
+              if (onReady) onReady();
+            }).catch(err => {
+              console.warn('VR session request failed, falling back to desktop:', err);
+              showToast('DESKTOP MODE', 'VR session failed or rejected. Playing in browser.');
+              state.targetPlatform = 'desktop';
+              dom.lobbyScreen.style.display = 'none';
+              dom.hudOverlay.style.display = 'flex';
+              onWindowResize();
+              if (onReady) onReady();
+            });
+          } else {
+            showToast('DESKTOP MODE', 'No VR headset detected. Playing in browser.');
+            state.targetPlatform = 'desktop';
+            dom.lobbyScreen.style.display = 'none';
+            dom.hudOverlay.style.display = 'flex';
+            onWindowResize();
+            if (onReady) onReady();
+          }
+        }).catch(() => {
+          state.targetPlatform = 'desktop';
+          dom.lobbyScreen.style.display = 'none';
+          dom.hudOverlay.style.display = 'flex';
+          onWindowResize();
+          if (onReady) onReady();
+        });
+      } else {
+        dom.lobbyScreen.style.display = 'none';
+        dom.hudOverlay.style.display = 'flex';
+        onWindowResize();
+        if (onReady) onReady();
+      }
+    }
+
+    /* ========================================================================
+       DESKTOP INPUTS (WASD + MOUSE LOOK & SHOOT)
+       ======================================================================== */
+    function setupDesktopControls() {
+      window.addEventListener('click', e => {
+        sound.init();
+        if (state.inGame && !state.inVR) {
+          if (e.target && (e.target.tagName === 'BUTTON' || e.target.closest('button'))) return;
+
+          dom.canvasContainer.requestPointerLock = dom.canvasContainer.requestPointerLock || dom.canvasContainer.mozRequestPointerLock;
+          if (dom.canvasContainer.requestPointerLock) {
+            dom.canvasContainer.requestPointerLock();
+          }
+        }
+      });
+
+      document.addEventListener('pointerlockchange', onPointerLockChange);
+      document.addEventListener('mozpointerlockchange', onPointerLockChange);
+
+      document.addEventListener('mousemove', e => {
+        if (!isPointerLocked || state.inVR) return;
+        const movementX = e.movementX || e.mozMovementX || 0;
+        const movementY = e.movementY || e.mozMovementY || 0;
+
+        yaw -= movementX * 0.0022;
+        pitch -= movementY * 0.0022;
+        pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+
+        camera.rotation.set(pitch, 0, 0);
+        playerDolly.rotation.y = yaw;
+      });
+
+      window.addEventListener('keydown', e => {
+        const k = e.key.toLowerCase();
+        if (k === 'w') keys.w = true;
+        if (k === 'a') keys.a = true;
+        if (k === 's') keys.s = true;
+        if (k === 'd') keys.d = true;
+        if (k === ' ') keys.space = true;
+        if (k === 'm') toggleMic();
+      });
+
+      window.addEventListener('keyup', e => {
+        const k = e.key.toLowerCase();
+        if (k === 'w') keys.w = false;
+        if (k === 'a') keys.a = false;
+        if (k === 's') keys.s = false;
+        if (k === 'd') keys.d = false;
+        if (k === ' ') keys.space = false;
+      });
+
+      window.addEventListener('mousedown', e => {
+        if (e.button === 0 && isPointerLocked && !state.inVR) {
+          attemptShoot(false);
+        }
+      });
+    }
+
+    function onPointerLockChange() {
+      isPointerLocked = (document.pointerLockElement === dom.canvasContainer || document.mozPointerLockElement === dom.canvasContainer);
+      if (isPointerLocked && !state.inVR) {
+        dom.crosshair.style.display = 'block';
+      } else {
+        dom.crosshair.style.display = 'none';
+      }
+    }
+
+    /* ========================================================================
+       SHOOTING, BULLETS & FIRE RATE LIMIT (UNLIMITED AMMO)
+       ======================================================================== */
+    function readFireRateInputs() {
+      const b = Math.max(1, parseInt(dom.inputFireBullets.value, 10) || 3);
+      const s = Math.max(0.2, parseFloat(dom.inputFireSeconds.value) || 1.0);
+      state.fireBullets = b;
+      state.fireSeconds = s;
+      state.minShotInterval = (s / b) * 1000;
+      dom.rateDisplayText.textContent = `${b} bullets / ${s.toFixed(1)}s`;
+    }
+
+    function attemptShoot(isVR = false) {
+      if (!state.inGame) return;
+      if (state.respawnCountdown > 0) return;
+
+      const now = performance.now();
+      if (now - state.lastShotTime < state.minShotInterval) {
+        dom.fireCooldownBadge.textContent = 'COOLDOWN';
+        dom.fireCooldownBadge.className = 'text-xs font-bold text-rose-400 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-700';
+        return;
+      }
+
+      state.lastShotTime = now;
+      dom.fireCooldownBadge.textContent = 'READY';
+      dom.fireCooldownBadge.className = 'text-xs font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700';
+      sound.playGunshot();
+
+      let origin = new THREE.Vector3();
+      let direction = new THREE.Vector3();
+
+      if (isVR && vrRightGunMesh && vrRightGunMesh.parent) {
+        vrRightGunMesh.userData.tip.getWorldPosition(origin);
+        const localForward = new THREE.Vector3(0, 0, -1);
+        const worldQuat = new THREE.Quaternion();
+        vrRightGunMesh.getWorldQuaternion(worldQuat);
+        direction = localForward.applyQuaternion(worldQuat).normalize();
+      } else {
+        camera.getWorldPosition(origin);
+        camera.getWorldDirection(direction);
+        origin.addScaledVector(direction, 0.4);
+        origin.y -= 0.05;
+        animateDesktopGunRecoil();
+      }
+
+      triggerMuzzleFlash(origin);
+      spawnBullet(origin, direction, state.myPlayerId);
+
+      if (state.peerConn && state.peerConn.open) {
+        state.peerConn.send({
+          type: 'shoot',
+          origin: [origin.x, origin.y, origin.z],
+          direction: [direction.x, direction.y, direction.z],
+          sender: state.myPlayerId
+        });
+      }
+    }
+
+    function animateDesktopGunRecoil() {
+      if (!fpGunMesh || !fpGunMesh.visible) return;
+      fpGunMesh.position.z = -0.42;
+      fpGunMesh.rotation.x = 0.22;
+      setTimeout(() => {
+        if (fpGunMesh) {
+          fpGunMesh.position.z = -0.5;
+          fpGunMesh.rotation.x = 0;
+        }
+      }, 70);
+    }
+
+    function triggerMuzzleFlash(pos) {
+      if (!muzzleFlashLight) return;
+      muzzleFlashLight.position.copy(pos);
+      muzzleFlashLight.intensity = 4.5;
+      setTimeout(() => {
+        if (muzzleFlashLight) muzzleFlashLight.intensity = 0;
+      }, 45);
+    }
+
+    function spawnBullet(pos, dir, shooterId) {
+      const geo = new THREE.CylinderGeometry(0.04, 0.04, 0.35, 6);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
+      const bullet = new THREE.Mesh(geo, mat);
+      bullet.position.copy(pos);
+      bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+
+      bullet.userData = {
+        direction: dir.clone().normalize(),
+        shooterId: shooterId,
+        life: 0,
+        bounces: 0
+      };
+
+      scene.add(bullet);
+      bullets.push(bullet);
+    }
+
+    function spawnSparks(pos, colorHex = 0xffa500) {
+      const pCount = 14;
+      const geo = new THREE.BufferGeometry();
+      const positions = new Float32Array(pCount * 3);
+      const velocities = [];
+
+      for (let i = 0; i < pCount; i++) {
+        positions[i * 3] = pos.x;
+        positions[i * 3 + 1] = pos.y;
+        positions[i * 3 + 2] = pos.z;
+        velocities.push(new THREE.Vector3(
+          (Math.random() - 0.5) * 5,
+          Math.random() * 4 + 1,
+          (Math.random() - 0.5) * 5
+        ));
+      }
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({ color: colorHex, size: 0.12, transparent: true, opacity: 1 });
+      const pSystem = new THREE.Points(geo, mat);
+      scene.add(pSystem);
+
+      particleSystems.push({
+        system: pSystem,
+        velocities: velocities,
+        life: 0.35,
+        age: 0
+      });
+    }
+
+    /* ========================================================================
+       PEER-TO-PEER MULTIPLAYER & DIRECT AUDIO CHAT (PEERJS)
+       ======================================================================== */
+    function getStandardRoomId(roomName) {
+      const sanitized = roomName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return `outlaw2600-${sanitized || 'xellossan'}-host`;
+    }
+
+    function initHostPeer() {
+      const room = dom.inputHostRoom.value.trim() || 'Xellossan';
+      state.roomName = room;
+      state.myName = dom.inputHostName.value.trim() || 'Wyatt Earp';
+      state.isHost = true;
+      state.isSolo = false;
+
+      // Host is assigned to West Side (Player 1)
+      applyPlayerSide(1);
+
+      dom.roomStatusBox.classList.remove('hidden');
+      dom.statusMessage.textContent = 'Registering room on P2P network...';
+      dom.roomCodeDisplay.innerHTML = `Room: <span class="font-bold text-amber-300">${room}</span> (You: West)`;
+
+      const hostId = getStandardRoomId(room);
+
+      try {
+        if (state.peerInstance) state.peerInstance.destroy();
+        state.peerInstance = new Peer(hostId, { debug: 1 });
+
+        state.peerInstance.on('open', () => {
+          dom.statusMessage.textContent = `Room created! Waiting for opponent to join "${room}"...`;
+          initLocalAudio(dom.chkHostAudio.checked);
+        });
+
+        state.peerInstance.on('error', err => {
+          if (err.type === 'unavailable-id') {
+            dom.statusMessage.textContent = `Room "${room}" host exists. Try joining or choose another room name.`;
+          } else {
+            dom.statusMessage.textContent = `P2P Network: ${err.type}`;
+          }
+        });
+
+        state.peerInstance.on('connection', conn => {
+          state.peerConn = conn;
+          setupDataConnectionHandlers();
+        });
+
+        state.peerInstance.on('call', call => {
+          if (state.localAudioStream) {
+            call.answer(state.localAudioStream);
+          } else {
+            call.answer();
+          }
+          setupAudioCallHandlers(call);
+        });
+
+      } catch (e) {
+        console.error('PeerJS init failed:', e);
+        dom.statusMessage.textContent = 'P2P initialization error. You can still play Solo Practice!';
+      }
+    }
+
+    function initJoinPeer() {
+      const room = dom.inputJoinRoom.value.trim() || 'Xellossan';
+      state.roomName = room;
+      state.myName = dom.inputJoinName.value.trim() || 'Doc Holliday';
+      state.isHost = false;
+      state.isSolo = false;
+
+      // Joiner is assigned to East Side (Player 2)
+      applyPlayerSide(2);
+
+      dom.roomStatusBox.classList.remove('hidden');
+      dom.statusMessage.textContent = `Connecting to host of room "${room}"...`;
+      dom.roomCodeDisplay.innerHTML = `Room: <span class="font-bold text-amber-300">${room}</span> (You: East)`;
+
+      const hostId = getStandardRoomId(room);
+
+      try {
+        if (state.peerInstance) state.peerInstance.destroy();
+        state.peerInstance = new Peer(null, { debug: 1 });
+
+        state.peerInstance.on('open', () => {
+          dom.statusMessage.textContent = `Connecting to host: ${hostId}...`;
+          const conn = state.peerInstance.connect(hostId, { reliable: true });
+          state.peerConn = conn;
+          setupDataConnectionHandlers();
+
+          initLocalAudio(dom.chkJoinAudio.checked, () => {
+            if (state.localAudioStream) {
+              const call = state.peerInstance.call(hostId, state.localAudioStream);
+              setupAudioCallHandlers(call);
+            }
+          });
+        });
+
+        state.peerInstance.on('error', err => {
+          dom.statusMessage.textContent = `Could not reach room "${room}". Ensure Host is active.`;
+        });
+
+      } catch (e) {
+        console.error('PeerJS join failed:', e);
+        dom.statusMessage.textContent = 'P2P join error.';
+      }
+    }
+
+    function setupDataConnectionHandlers() {
+      state.peerConn.on('open', () => {
+        dom.statusMessage.textContent = 'Opponent connected! Starting duel...';
+
+        state.peerConn.send({
+          type: 'handshake',
+          name: state.myName,
+          isHost: state.isHost,
+          myPlayerId: state.myPlayerId,
+          fireBullets: state.fireBullets,
+          fireSeconds: state.fireSeconds
+        });
+
+        setTimeout(startMatch, 1000);
+      });
+
+      state.peerConn.on('data', data => {
+        handlePeerMessage(data);
+      });
+
+      state.peerConn.on('close', () => {
+        showToast('OPPONENT DISCONNECTED', 'Peer left the showdown.');
+        state.inGame = false;
+        setTimeout(() => {
+          dom.lobbyScreen.style.display = 'flex';
+          dom.hudOverlay.style.display = 'none';
+        }, 2000);
+      });
+    }
+
+    function handlePeerMessage(data) {
+      if (!data) return;
+
+      if (data.type === 'handshake') {
+        state.peerName = data.name;
+        if (data.fireBullets && data.fireSeconds) {
+          state.fireBullets = data.fireBullets;
+          state.fireSeconds = data.fireSeconds;
+          state.minShotInterval = (data.fireSeconds / data.fireBullets) * 1000;
+          dom.rateDisplayText.textContent = `${data.fireBullets} bullets / ${data.fireSeconds.toFixed(1)}s`;
+        }
+
+        // Strictly configure names and positions based on host vs guest role
+        if (state.isHost) {
+          dom.p1Name.textContent = `WEST: ${state.myName.toUpperCase()}`;
+          dom.p2Name.textContent = `EAST: ${data.name.toUpperCase()}`;
+          applyPlayerSide(1); // Host is West
+        } else {
+          dom.p1Name.textContent = `WEST: ${data.name.toUpperCase()}`;
+          dom.p2Name.textContent = `EAST: ${state.myName.toUpperCase()}`;
+          applyPlayerSide(2); // Joiner is East
+        }
+        updateScoreboardCanvas();
+      } else if (data.type === 'state') {
+        if (remotePlayerMesh) {
+          remotePlayerMesh.position.set(data.x, data.y - 1.6, data.z);
+          remotePlayerMesh.rotation.y = data.yaw + Math.PI;
+        }
+      } else if (data.type === 'shoot') {
+        const origin = new THREE.Vector3(data.origin[0], data.origin[1], data.origin[2]);
+        const dir = new THREE.Vector3(data.direction[0], data.direction[1], data.direction[2]);
+        sound.playGunshot();
+        triggerMuzzleFlash(origin);
+        spawnBullet(origin, dir, data.sender);
+      } else if (data.type === 'hit') {
+        onPlayerHit(data.victimId, data.shooterId);
+      } else if (data.type === 'rematch') {
+        resetMatchScores();
+      }
+    }
+
+    function initLocalAudio(enabled, callback) {
+      if (!enabled) {
+        dom.peerVoiceStatus.textContent = 'Mic Disabled';
+        if (callback) callback();
+        return;
+      }
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
+          state.localAudioStream = stream;
+          dom.peerVoiceStatus.textContent = 'Mic Active (P2P)';
+          setupAudioAnalyser(stream);
+          if (callback) callback();
+        }).catch(err => {
+          console.warn('Microphone permission denied:', err);
+          dom.peerVoiceStatus.textContent = 'Mic Unavailable (Game Audio Only)';
+          if (callback) callback();
+        });
+      } else {
+        dom.peerVoiceStatus.textContent = 'Audio API Unsupported';
+        if (callback) callback();
+      }
+    }
+
+    function setupAudioCallHandlers(call) {
+      state.peerCall = call;
+      call.on('stream', remoteStream => {
+        dom.remoteAudio.srcObject = remoteStream;
+        dom.remoteAudio.play().catch(e => console.warn('Remote audio autoplay blocked:', e));
+        dom.peerVoiceStatus.textContent = 'Voice Chat Connected!';
+      });
+      call.on('close', () => {
+        dom.peerVoiceStatus.textContent = 'Voice Disconnected';
+      });
+    }
+
+    function toggleMic() {
+      if (!state.localAudioStream) {
+        showToast('NO MIC', 'Microphone stream is not active.');
+        return;
+      }
+      state.micMuted = !state.micMuted;
+      state.localAudioStream.getAudioTracks().forEach(track => {
+        track.enabled = !state.micMuted;
+      });
+
+      if (state.micMuted) {
+        dom.micStatusText.textContent = 'MIC: MUTED';
+        dom.btnToggleMic.classList.replace('bg-amber-700', 'bg-red-800');
+      } else {
+        dom.micStatusText.textContent = 'MIC: ON';
+        dom.btnToggleMic.classList.replace('bg-red-800', 'bg-amber-700');
+      }
+    }
+
+    function setupAudioAnalyser(stream) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 32;
+        src.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        setInterval(() => {
+          if (state.micMuted || !state.inGame) {
+            dom.audioBars.forEach(b => b.style.height = '3px');
+            return;
+          }
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i];
+          const avg = sum / data.length;
+
+          dom.audioBars[0].style.height = `${Math.min(14, Math.max(3, avg * 0.15))}px`;
+          dom.audioBars[1].style.height = `${Math.min(14, Math.max(3, avg * 0.22))}px`;
+          dom.audioBars[2].style.height = `${Math.min(14, Math.max(3, avg * 0.18))}px`;
+          dom.audioBars[3].style.height = `${Math.min(14, Math.max(3, avg * 0.28))}px`;
+        }, 100);
+      } catch (e) {
+        console.warn('Analyser setup skipped:', e);
+      }
+    }
+
+    /* ========================================================================
+       GAME LOOP, MATCH FLOW & SCORING
+       ======================================================================== */
+    function startSoloPractice() {
+      readFireRateInputs();
+      state.isSolo = true;
+      state.isHost = true;
+      state.myName = 'Gunslinger';
+      state.peerName = 'Billy The Kid (AI)';
+
+      applyPlayerSide(1); // Solo player is West side
+
+      dom.p1Name.textContent = 'WEST: YOU';
+      dom.p2Name.textContent = 'EAST: BILLY (AI)';
+      dom.peerVoiceStatus.textContent = 'Solo Duel Mode';
+      startMatch();
+    }
+
+    function startMatch() {
+      readFireRateInputs();
+      state.inGame = true;
+      state.scoreP1 = 0;
+      state.scoreP2 = 0;
+      updateScoreUI();
+      updateScoreboardCanvas();
+
+      // Guarantee opposite sides upon match start
+      applyPlayerSide(state.myPlayerId);
+
+      dom.lobbyScreen.style.display = 'none';
+      dom.gameOverModal.style.display = 'none';
+      dom.hudOverlay.style.display = 'flex';
+
+      if (!state.inVR) {
+        dom.crosshair.style.display = 'block';
+      }
+
+      sound.playBell();
+      const sideName = state.myPlayerId === 1 ? 'WEST CANYON' : 'EAST CANYON';
+      showToast('DRAW!', `You are posted at the ${sideName}! Duel your opponent across the canyon!`);
+    }
+
+    function showToast(title, sub) {
+      dom.toastTitle.textContent = title;
+      dom.toastSub.textContent = sub;
+      dom.centerToast.classList.remove('opacity-0', 'scale-90');
+      dom.centerToast.classList.add('opacity-100', 'scale-100');
+      setTimeout(() => {
+        dom.centerToast.classList.remove('opacity-100', 'scale-100');
+        dom.centerToast.classList.add('opacity-0', 'scale-90');
+      }, 2400);
+    }
+
+    function onPlayerHit(victimId, shooterId) {
+      sound.playHit();
+      spawnSparks(victimId === state.myPlayerId ? playerDolly.position : remotePlayerMesh.position, 0xef4444);
+
+      if (shooterId === 1) state.scoreP1++;
+      if (shooterId === 2) state.scoreP2++;
+      updateScoreUI();
+      updateScoreboardCanvas();
+
+      if (victimId === state.myPlayerId) {
+        showToast('YOU GOT HIT!', '+1 Point to Opponent. Hold your ground!');
+        state.respawnCountdown = 1.0;
+      } else {
+        showToast('OUTLAW HIT!', '+1 POINT AWARDED!');
+      }
+
+      if (state.scoreP1 >= MAX_SCORE || state.scoreP2 >= MAX_SCORE) {
+        endMatch();
+      }
+    }
+
+    function updateScoreUI() {
+      dom.p1Score.textContent = state.scoreP1;
+      dom.p2Score.textContent = state.scoreP2;
+    }
+
+    function endMatch() {
+      state.inGame = false;
+      const p1Won = state.scoreP1 >= MAX_SCORE;
+      const iWon = (p1Won && state.myPlayerId === 1) || (!p1Won && state.myPlayerId === 2);
+
+      sound.playWin();
+      dom.winnerTitle.textContent = iWon ? 'VICTORY!' : 'DEFEATED!';
+      dom.winnerTitle.className = iWon ? 'text-4xl font-black text-amber-400 retro-text-shadow mt-1' : 'text-4xl font-black text-rose-500 retro-text-shadow mt-1';
+      dom.finalScoreDisplay.textContent = `${state.scoreP1} - ${state.scoreP2}`;
+      dom.winnerDesc.textContent = iWon ? 'You were the fastest gun in the territory!' : 'Outdrawn! Click the scoreboard or Rematch to play again!';
+
+      if (!state.inVR) {
+        dom.gameOverModal.style.display = 'flex';
+      }
+      updateScoreboardCanvas();
+    }
+
+    function resetMatchScores() {
+      state.scoreP1 = 0;
+      state.scoreP2 = 0;
+      updateScoreUI();
+      updateScoreboardCanvas();
+      dom.gameOverModal.style.display = 'none';
+      startMatch();
+      showToast('MATCH RESTARTED', 'Scores reset to 0 - 0. First to 10 wins!');
+    }
+
+    /* ========================================================================
+       RENDER LOOP & PHYSICS UPDATE
+       ======================================================================== */
+    function renderLoop() {
+      const dt = Math.min(clock.getDelta(), 0.1);
+
+      if (state.respawnCountdown > 0) {
+        state.respawnCountdown -= dt;
+      }
+
+      if (state.inVR && renderer.xr.isPresenting) {
+        handleVRControls(dt);
+        checkVRScoreboardInteraction(false);
+      } else {
+        handleDesktopMovement(dt);
+      }
+
+      updateObstacles(dt);
+      updateBullets(dt);
+      updateParticles(dt);
+
+      if (state.isSolo && state.inGame) {
+        updateSoloAI(dt);
+      }
+
+      if (state.inGame) {
+        const timeSince = performance.now() - state.lastShotTime;
+        if (timeSince >= state.minShotInterval && dom.fireCooldownBadge.textContent !== 'READY') {
+          dom.fireCooldownBadge.textContent = 'READY';
+          dom.fireCooldownBadge.className = 'text-xs font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700';
+        }
+      }
+
+      if (state.inGame && state.peerConn && state.peerConn.open && Math.random() < 0.6) {
+        state.peerConn.send({
+          type: 'state',
+          x: playerDolly.position.x,
+          y: playerDolly.position.y,
+          z: playerDolly.position.z,
+          yaw: playerDolly.rotation.y
+        });
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function handleVRControls(dt) {
+      const session = renderer.xr.getSession();
+      if (!session) return;
+
+      for (const source of session.inputSources) {
+        if (!source.gamepad) continue;
+        const gp = source.gamepad;
+
+        if (source.handedness === 'left') {
+          const axisX = gp.axes[2] !== undefined ? gp.axes[2] : (gp.axes[0] || 0);
+          const axisZ = gp.axes[3] !== undefined ? gp.axes[3] : (gp.axes[1] || 0);
+
+          if (Math.abs(axisX) > 0.12 || Math.abs(axisZ) > 0.12) {
+            const speed = 5.5 * dt;
+            const moveAngle = playerDolly.rotation.y;
+
+            const fwdX = -Math.sin(moveAngle);
+            const fwdZ = -Math.cos(moveAngle);
+            const rightX = Math.cos(moveAngle);
+            const rightZ = -Math.sin(moveAngle);
+
+            const forwardInput = -axisZ;
+            const strafeInput = axisX;
+
+            playerDolly.position.x += (fwdX * forwardInput + rightX * strafeInput) * speed;
+            playerDolly.position.z += (fwdZ * forwardInput + rightZ * strafeInput) * speed;
+
+            clampPlayerPosition();
+          }
+        }
+
+        if (source.handedness === 'right' || (session.inputSources.length === 1 && source.handedness !== 'left')) {
+          const turnAxis = gp.axes[2] !== undefined ? gp.axes[2] : (gp.axes[0] || 0);
+          if (Math.abs(turnAxis) > 0.15) {
+            const turnSpeed = 2.4 * dt;
+            playerDolly.rotation.y -= turnAxis * turnSpeed;
+          }
+
+          const triggerPressed = (gp.buttons[0] && (gp.buttons[0].pressed || gp.buttons[0].value > 0.45));
+          if (triggerPressed && !rightTriggerWasPressed) {
+            rightTriggerWasPressed = true;
+            onVRSelectStart();
+          } else if (!triggerPressed) {
+            rightTriggerWasPressed = false;
+          }
+        }
+      }
+    }
+
+    function handleDesktopMovement(dt) {
+      if (!state.inGame || !isPointerLocked) return;
+      const speed = 6.0 * dt;
+      let forwardInput = 0;
+      let strafeInput = 0;
+
+      if (keys.w) forwardInput += 1;
+      if (keys.s) forwardInput -= 1;
+      if (keys.a) strafeInput -= 1;
+      if (keys.d) strafeInput += 1;
+
+      if (forwardInput !== 0 || strafeInput !== 0) {
+        const length = Math.hypot(forwardInput, strafeInput);
+        forwardInput /= length;
+        strafeInput /= length;
+
+        const fwdX = -Math.sin(yaw);
+        const fwdZ = -Math.cos(yaw);
+        const rightX = Math.cos(yaw);
+        const rightZ = -Math.sin(yaw);
+
+        playerDolly.position.x += (fwdX * forwardInput + rightX * strafeInput) * speed;
+        playerDolly.position.z += (fwdZ * forwardInput + rightZ * strafeInput) * speed;
+
+        clampPlayerPosition();
+
+        if (fpGunMesh && fpGunMesh.visible) {
+          fpGunMesh.position.y = -0.22 + Math.sin(clock.getElapsedTime() * 11) * 0.008;
+          fpGunMesh.position.x = 0.24 + Math.cos(clock.getElapsedTime() * 5.5) * 0.005;
+        }
+      }
+    }
+
+    function clampPlayerPosition() {
+      const halfZ = ARENA_DEPTH / 2 - 1.5;
+      playerDolly.position.z = Math.max(-halfZ, Math.min(halfZ, playerDolly.position.z));
+
+      if (state.myPlayerId === 1) {
+        // West side strictly confined to [-15.5, -6.5]
+        playerDolly.position.x = Math.max(-ARENA_WIDTH / 2 + 1.5, Math.min(-6.5, playerDolly.position.x));
+      } else {
+        // East side strictly confined to [+6.5, +15.5]
+        playerDolly.position.x = Math.max(6.5, Math.min(ARENA_WIDTH / 2 - 1.5, playerDolly.position.x));
+      }
+    }
+
+    function updateObstacles(dt) {
+      const halfZ = ARENA_DEPTH / 2;
+      for (const obs of obstacles) {
+        if (!obs.visible) continue;
+        obs.position.z += obs.userData.speed * dt;
+
+        if (obs.userData.type === 'wagon' && obs.userData.wheels) {
+          const rollAngle = (obs.userData.speed * dt) / 0.5;
+          obs.userData.wheels.forEach(w => {
+            w.rotation.z += rollAngle;
+          });
+        }
+
+        if (obs.userData.type === 'block') {
+          obs.rotation.x += dt * 1.5;
+          obs.rotation.y += dt * 1.8;
+          obs.position.y = obs.userData.baseY + Math.sin(clock.getElapsedTime() * 2 + obs.userData.bobPhase) * 0.35;
+        }
+
+        if (obs.userData.speed > 0 && obs.position.z > halfZ + 2.5) {
+          resetObstacle(obs, -halfZ - 2.5);
+        } else if (obs.userData.speed < 0 && obs.position.z < -halfZ - 2.5) {
+          resetObstacle(obs, halfZ + 2.5);
+        }
+      }
+    }
+
+    function updateBullets(dt) {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.userData.life += dt;
+
+        const moveDist = BULLET_SPEED * dt;
+        b.position.addScaledVector(b.userData.direction, moveDist);
+
+        let hitScoreboard = false;
+        [northScoreboardMesh, southScoreboardMesh].forEach(sb => {
+          if (!sb) return;
+          const distToBoard = b.position.distanceTo(sb.position);
+          if (distToBoard < 2.5) {
+            hitScoreboard = true;
+            sound.playBell();
+            spawnSparks(b.position, 0xf59e0b);
+            resetMatchScores();
+            if (state.peerConn && state.peerConn.open) {
+              state.peerConn.send({ type: 'rematch' });
+            }
+          }
+        });
+
+        if (hitScoreboard) {
+          scene.remove(b);
+          bullets.splice(i, 1);
+          continue;
+        }
+
+        const northBound = ARENA_DEPTH / 2;
+        const southBound = -ARENA_DEPTH / 2;
+        if ((b.position.z > northBound || b.position.z < southBound) && b.userData.bounces < 2) {
+          b.userData.direction.z *= -1;
+          b.userData.bounces++;
+          sound.playRicochet();
+          spawnSparks(b.position, 0xfde047);
+          b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.userData.direction.clone().normalize());
+        }
+
+        let hitObstacle = false;
+        for (const obs of obstacles) {
+          if (!obs.visible) continue;
+          const distToObs = b.position.distanceTo(new THREE.Vector3(obs.position.x, obs.position.y + 0.8, obs.position.z));
+          if (distToObs < obs.userData.radius) {
+            hitObstacle = true;
+            obs.userData.health--;
+            sound.playExplode();
+            spawnSparks(b.position, obs.userData.type === 'wagon' ? 0xe8dfcf : 0xd97706);
+
+            if (obs.userData.health <= 0) {
+              obs.visible = false;
+              setTimeout(() => {
+                resetObstacle(obs);
+              }, 2500);
+            }
+            break;
+          }
+        }
+
+        let hitPlayer = false;
+        if (!hitObstacle) {
+          const targetPos = b.userData.shooterId === state.myPlayerId ? remotePlayerMesh.position : playerDolly.position;
+          const distXZ = Math.hypot(b.position.x - targetPos.x, b.position.z - targetPos.z);
+          const distY = Math.abs(b.position.y - (targetPos.y + 1.0));
+
+          if (distXZ < 0.85 && distY < 1.3) {
+            hitPlayer = true;
+            const victimId = b.userData.shooterId === 1 ? 2 : 1;
+            onPlayerHit(victimId, b.userData.shooterId);
+
+            if (state.peerConn && state.peerConn.open) {
+              state.peerConn.send({
+                type: 'hit',
+                victimId: victimId,
+                shooterId: b.userData.shooterId
+              });
+            }
+          }
+        }
+
+        if (hitObstacle || hitPlayer || b.userData.life > 2.5 || Math.abs(b.position.x) > ARENA_WIDTH / 2 + 5) {
+          scene.remove(b);
+          bullets.splice(i, 1);
+        }
+      }
+    }
+
+    function updateParticles(dt) {
+      for (let i = particleSystems.length - 1; i >= 0; i--) {
+        const p = particleSystems[i];
+        p.age += dt;
+        const positions = p.system.geometry.attributes.position.array;
+        for (let j = 0; j < p.velocities.length; j++) {
+          positions[j * 3] += p.velocities[j].x * dt;
+          positions[j * 3 + 1] += p.velocities[j].y * dt;
+          positions[j * 3 + 2] += p.velocities[j].z * dt;
+          p.velocities[j].y -= 9.8 * dt;
+        }
+        p.system.geometry.attributes.position.needsUpdate = true;
+        p.system.material.opacity = Math.max(0, 1 - p.age / p.life);
+
+        if (p.age >= p.life) {
+          scene.remove(p.system);
+          particleSystems.splice(i, 1);
+        }
+      }
+    }
+
+    /* ========================================================================
+       TACTICAL DYNAMIC AI COMPUTER OPPONENT
+       ======================================================================== */
+    const aiState = {
+      targetPos: new THREE.Vector3(12.5, 0, 0),
+      speed: 3.8,
+      actionTimer: 0,
+      actionDuration: 2.0,
+      mode: 'wander',
+      shootCooldown: 0
+    };
+
+    function updateSoloAI(dt) {
+      if (!remotePlayerMesh) return;
+
+      aiState.actionTimer += dt;
+      aiState.shootCooldown += dt;
+
+      if (aiState.actionTimer >= aiState.actionDuration || remotePlayerMesh.position.distanceTo(aiState.targetPos) < 0.6) {
+        aiState.actionTimer = 0;
+        aiState.actionDuration = 1.2 + Math.random() * 2.2;
+        const roll = Math.random();
+
+        if (roll < 0.3) {
+          aiState.mode = 'advance';
+          aiState.targetPos.x = 7.5 + Math.random() * 2.5;
+          aiState.targetPos.z = (Math.random() - 0.5) * 16.0;
+          aiState.speed = 4.4 + Math.random() * 1.5;
+        } else if (roll < 0.6) {
+          aiState.mode = 'flank';
+          aiState.targetPos.x = 8.5 + Math.random() * 5.5;
+          aiState.targetPos.z = Math.random() > 0.5 ? (6.0 + Math.random() * 3.5) : (-6.0 - Math.random() * 3.5);
+          aiState.speed = 4.8;
+        } else if (roll < 0.8) {
+          aiState.mode = 'retreat';
+          aiState.targetPos.x = 13.5 + Math.random() * 1.8;
+          aiState.targetPos.z = (Math.random() - 0.5) * 14.0;
+          aiState.speed = 3.5;
+        } else {
+          aiState.mode = 'strafe';
+          aiState.targetPos.x = 9.0 + Math.random() * 4.0;
+          aiState.targetPos.z = remotePlayerMesh.position.z + (Math.random() > 0.5 ? 4.5 : -4.5);
+          aiState.targetPos.z = Math.max(-9.5, Math.min(9.5, aiState.targetPos.z));
+          aiState.speed = 5.2;
+        }
+      }
+
+      const moveVec = new THREE.Vector3().subVectors(aiState.targetPos, remotePlayerMesh.position);
+      moveVec.y = 0;
+      const dist = moveVec.length();
+
+      if (dist > 0.2) {
+        moveVec.normalize();
+        remotePlayerMesh.position.addScaledVector(moveVec, aiState.speed * dt);
+        remotePlayerMesh.lookAt(playerDolly.position.x, 0, playerDolly.position.z);
+      }
+
+      remotePlayerMesh.position.x = Math.max(7.2, Math.min(15.5, remotePlayerMesh.position.x));
+      remotePlayerMesh.position.z = Math.max(-10.0, Math.min(10.0, remotePlayerMesh.position.z));
+
+      const minIntervalSec = state.minShotInterval / 1000;
+      if (aiState.shootCooldown >= Math.max(minIntervalSec, 0.9 + Math.random() * 1.2)) {
+        aiState.shootCooldown = 0;
+        const origin = remotePlayerMesh.position.clone();
+        origin.y += 1.4;
+        const target = playerDolly.position.clone();
+        target.y += 1.2 + (Math.random() - 0.5) * 0.35;
+        target.z += (Math.random() - 0.5) * 0.45;
+        const dir = target.sub(origin).normalize();
+
+        sound.playGunshot();
+        triggerMuzzleFlash(origin);
+        spawnBullet(origin, dir, 2);
+      }
+    }
+
+    function onWindowResize() {
+      const width = window.innerWidth || document.documentElement.clientWidth || 800;
+      const height = window.innerHeight || document.documentElement.clientHeight || 600;
+
+      if (camera && renderer) {
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+    }
+
+    /* ========================================================================
+       UI TABS, BUTTONS & EVENT LISTENERS
+       ======================================================================== */
+    dom.btnSelectVR.addEventListener('click', () => {
+      setPlatformMode('vr');
+    });
+
+    dom.btnSelectDesktop.addEventListener('click', () => {
+      setPlatformMode('desktop');
+    });
+
+    dom.tabHost.addEventListener('click', () => {
+      dom.tabHost.className = 'flex-1 py-1.5 text-xs font-bold rounded-md bg-amber-600 text-stone-950 transition cursor-pointer';
+      dom.tabJoin.className = 'flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer';
+      dom.tabSolo.className = 'flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer';
+      dom.panelHost.classList.remove('hidden');
+      dom.panelJoin.classList.add('hidden');
+      dom.panelSolo.classList.add('hidden');
+    });
+
+    dom.tabJoin.addEventListener('click', () => {
+      dom.tabJoin.className = 'flex-1 py-1.5 text-xs font-bold rounded-md bg-cyan-600 text-stone-950 transition cursor-pointer';
+      dom.tabHost.className = 'flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer';
+      dom.tabSolo.className = 'flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer';
+      dom.panelJoin.classList.remove('hidden');
+      dom.panelHost.classList.add('hidden');
+      dom.panelSolo.classList.add('hidden');
+    });
+
+    dom.tabSolo.addEventListener('click', () => {
+      dom.tabSolo.className = 'flex-1 py-1.5 text-xs font-bold rounded-md bg-emerald-600 text-stone-950 transition cursor-pointer';
+      dom.tabHost.className = 'flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer';
+      dom.tabJoin.className = 'flex-1 py-1.5 text-xs font-bold rounded-md text-amber-300 hover:text-white transition cursor-pointer';
+      dom.panelSolo.classList.remove('hidden');
+      dom.panelHost.classList.add('hidden');
+      dom.panelJoin.classList.add('hidden');
+    });
+
+    dom.btnCreateRoom.addEventListener('click', () => {
+      enterVRIfSelected(() => {
+        initHostPeer();
+      });
+    });
+
+    dom.btnJoinRoom.addEventListener('click', () => {
+      enterVRIfSelected(() => {
+        initJoinPeer();
+      });
+    });
+
+    dom.btnStartSolo.addEventListener('click', () => {
+      enterVRIfSelected(() => {
+        startSoloPractice();
+      });
+    });
+
+    dom.btnHudRestart.addEventListener('click', () => {
+      resetMatchScores();
+      if (state.peerConn && state.peerConn.open) {
+        state.peerConn.send({ type: 'rematch' });
+      }
+    });
+
+    dom.btnToggleMic.addEventListener('click', () => {
+      toggleMic();
+    });
+
+    dom.btnRematch.addEventListener('click', () => {
+      if (state.peerConn && state.peerConn.open) {
+        state.peerConn.send({ type: 'rematch' });
+      }
+      resetMatchScores();
+    });
+
+    dom.btnReturnLobby.addEventListener('click', () => {
+      state.inGame = false;
+      dom.gameOverModal.style.display = 'none';
+      dom.hudOverlay.style.display = 'none';
+      dom.crosshair.style.display = 'none';
+      dom.lobbyScreen.style.display = 'flex';
+      onWindowResize();
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initThree();
+    });
+  </script>
+</body>
+</html>
